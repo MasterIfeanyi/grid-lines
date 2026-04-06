@@ -4,14 +4,35 @@
   <meta charset="UTF-8" />
   <title>Canvas Grid Drawer</title>
   <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: sans-serif;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    /* canvas fills the entire screen */
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* controls float on top of the canvas */
+    #ui {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translateX(-50%, -50%);
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 1.5rem;
-      padding: 2rem;
-      background: #fff;
+      gap: 12px;
+      z-index: 10;
     }
 
     .controls {
@@ -20,6 +41,11 @@
       align-items: center;
       flex-wrap: wrap;
       justify-content: center;
+      background: rgba(255,255,255,0.85);
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: 1px solid #ddd;
+      backdrop-filter: blur(4px);
     }
 
     .slider-group {
@@ -32,6 +58,7 @@
     label {
       font-size: 13px;
       color: #666;
+      font-family: sans-serif;
     }
 
     button {
@@ -41,104 +68,108 @@
       cursor: pointer;
       background: #fff;
       font-size: 14px;
+      font-family: sans-serif;
     }
 
     button:hover { background: #f5f5f5; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    canvas {
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      max-width: 100%;
-      background: #fff;
-    }
-
     #statusMsg {
       font-size: 13px;
       color: #888;
+      font-family: sans-serif;
       min-height: 18px;
+      background: rgba(255,255,255,0.85);
+      padding: 4px 12px;
+      border-radius: 8px;
     }
   </style>
 </head>
 <body>
 
-  <div class="controls">
-    <button id="drawBtn" onclick="drawGrid()">Click me to draw the grid</button>
-    <button onclick="clearGrid()">Clear</button>
+  <!-- canvas goes first so it's behind everything -->
+  <canvas id="gridCanvas"></canvas>
+
+  <!-- UI floats on top -->
+  <div id="ui">
+    <div class="controls">
+      <button id="drawBtn" onclick="drawGrid()">Click me to draw the grid</button>
+      <button onclick="clearGrid()">Clear</button>
+    </div>
+
+    <div class="controls">
+      <div class="slider-group">
+        <label>lines: <span id="lineCountOut">50</span></label>
+        <input type="range" min="5" max="100" value="50" step="1" id="lineCount"
+          oninput="document.getElementById('lineCountOut').textContent = this.value" />
+      </div>
+
+      <div class="slider-group">
+        <label>speed (ms): <span id="speedOut">30</span></label>
+        <input type="range" min="1" max="200" value="30" step="1" id="speed"
+          oninput="document.getElementById('speedOut').textContent = this.value" />
+      </div>
+
+      <div class="slider-group">
+        <label>line color</label>
+        <input type="color" id="lineColor" value="#5DCAA5" />
+      </div>
+    </div>
+
+    <p id="statusMsg"></p>
   </div>
-
-  <div class="controls">
-    <div class="slider-group">
-      <label>lines: <span id="lineCountOut">50</span></label>
-      <input type="range" min="5" max="100" value="50" step="1" id="lineCount"
-        oninput="document.getElementById('lineCountOut').textContent = this.value" />
-    </div>
-
-    <div class="slider-group">
-      <label>speed (ms): <span id="speedOut">30</span></label>
-      <input type="range" min="1" max="200" value="30" step="1" id="speed"
-        oninput="document.getElementById('speedOut').textContent = this.value" />
-    </div>
-
-    <div class="slider-group">
-      <label>line color</label>
-      <input type="color" id="lineColor" value="#5DCAA5" />
-    </div>
-  </div>
-
-  <!-- THIS IS THE CANVAS -->
-  <canvas id="gridCanvas" width="600" height="500"></canvas>
-
-  <p id="statusMsg"></p>
 
   <script>
     let animTimer = null;
 
+    // make the canvas match the actual screen size in pixels
+    const canvas = document.getElementById('gridCanvas');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // if the user resizes the window, update the canvas too
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+
     function clearGrid() {
       if (animTimer) { clearTimeout(animTimer); animTimer = null; }
-
-      const canvas = document.getElementById('gridCanvas');
-      const ctx = canvas.getContext('2d'); // grab the pencil
-      ctx.clearRect(0, 0, canvas.width, canvas.height); // erase everything
-
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       document.getElementById('statusMsg').textContent = '';
       document.getElementById('drawBtn').disabled = false;
     }
 
     function drawGrid() {
-      if (animTimer) return; // don't start if already drawing
+      if (animTimer) return;
 
-      const canvas = document.getElementById('gridCanvas');
-      const ctx = canvas.getContext('2d'); // grab the pencil
-      ctx.clearRect(0, 0, canvas.width, canvas.height); // start fresh
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // read values from the controls
       const count = parseInt(document.getElementById('lineCount').value);
       const delay = parseInt(document.getElementById('speed').value);
       const color = document.getElementById('lineColor').value;
 
-      const W = canvas.width;  // 600
-      const H = canvas.height; // 500
+      const W = canvas.width;
+      const H = canvas.height;
 
-      // set pencil color and thickness
       ctx.strokeStyle = color;
       ctx.lineWidth = 1;
 
-      // figure out how far apart the lines should be
-      const hStep = W / count; // horizontal spacing
-      const vStep = H / count; // vertical spacing
+      const hStep = W / count;
+      const vStep = H / count;
 
-      // pre-calculate all line positions
       const verticals = [];
       const horizontals = [];
 
       for (let i = 0; i <= count; i++) {
-        verticals.push(Math.round(i * hStep));   // x positions
-        horizontals.push(Math.round(i * vStep)); // y positions
+        verticals.push(Math.round(i * hStep));
+        horizontals.push(Math.round(i * vStep));
       }
 
-      let vi = 0; // which vertical line we're on
-      let hi = 0; // which horizontal line we're on
+      let vi = 0;
+      let hi = 0;
 
       document.getElementById('drawBtn').disabled = true;
       document.getElementById('statusMsg').textContent = 'Drawing...';
@@ -149,25 +180,23 @@
         while (batch < 2) {
           let didSomething = false;
 
-          // draw the next vertical line
           if (vi < verticals.length) {
             const x = verticals[vi];
-            ctx.beginPath();       // lift the pencil
-            ctx.moveTo(x, 0);      // start at top
-            ctx.lineTo(x, H);      // go to bottom
-            ctx.stroke();          // draw it!
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, H);
+            ctx.stroke();
             vi++;
             didSomething = true;
             batch++;
           }
 
-          // draw the next horizontal line
           if (hi < horizontals.length) {
             const y = horizontals[hi];
-            ctx.beginPath();       // lift the pencil
-            ctx.moveTo(0, y);      // start at left
-            ctx.lineTo(W, y);      // go to right
-            ctx.stroke();          // draw it!
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(W, y);
+            ctx.stroke();
             hi++;
             didSomething = true;
             batch++;
@@ -176,9 +205,8 @@
           if (!didSomething) break;
         }
 
-        // if there are still lines to draw, schedule the next batch
         if (vi < verticals.length || hi < horizontals.length) {
-          animTimer = setTimeout(drawNext, delay); // wait `delay` ms then draw again
+          animTimer = setTimeout(drawNext, delay);
         } else {
           animTimer = null;
           document.getElementById('drawBtn').disabled = false;
@@ -187,7 +215,7 @@
         }
       }
 
-      drawNext(); // kick it off!
+      drawNext();
     }
   </script>
 
